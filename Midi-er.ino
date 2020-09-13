@@ -1,70 +1,101 @@
 #include <Bounce.h>
 
-const int channel = 1;
-const int ON_CC = 63;
-const int OFF_CC = 64;
-int button_0_state = true;
-int button_1_state = true;
+#define ARRAYSIZE(x)  (sizeof(x) / sizeof(x[0]))
+//needed to keep first interrupts at bay
+bool first_run = true;
+
+
+int channel = 1;
+
+const int pot_pins[] = {14, 15, 16};
+int pots[] = {0, 0, 0};
+int pot_previous_read[] = {0, 0, 0};
+const int pots_cc_number[] = {74, 75, 76};
 
 // Create Bounce objects for each button.  The Bounce object
 // automatically deals with contact chatter or "bounce", and
 // it makes detecting changes very simple.
-Bounce button0 = Bounce(14, 5);
-Bounce button1 = Bounce(15, 5);  // 5 = 5 ms debounce time
-//Bounce button2 = Bounce(2, 5);  // which is appropriate for good
-//Bounce button3 = Bounce(3, 5);  // quality mechanical pushbuttons
-//Bounce button4 = Bounce(4, 5);
-//Bounce button5 = Bounce(5, 5);  // if a button is too "sensitive"
-//Bounce button6 = Bounce(6, 5);  // to rapid touch, you can
-//Bounce button7 = Bounce(7, 5);  // increase this time.
+int button_pins[] = {2, 3, 4};
+Bounce buttons[] = {
+    Bounce(button_pins[0], 5),
+    Bounce(button_pins[1], 5),
+    Bounce(button_pins[2], 5)
+  };
+
+const int button_cc_number[] = {77, 78, 79};
+const int toggle_channel_pin = 6;
+const int toggle_channel_cc = 80;
+Bounce toggle_channel_button = Bounce(toggle_channel_pin, 5);
+
+
 
 void setup() {
-  // Configure the pins for input mode with pullup resistors.
-  // The pushbuttons connect from each pin to ground.  When
-  // the button is pressed, the pin reads LOW because the button
-  // shorts it to ground.  When released, the pin reads HIGH
-  // because the pullup resistor connects to +5 volts inside
-  // the chip.  LOW for "on", and HIGH for "off" may seem
-  // backwards, but using the on-chip pullup resistors is very
-  // convenient.  The scheme is called "active low", and it's
-  // very commonly used in electronics... so much that the chip
-  // has built-in pullup resistors!
-  pinMode(14, INPUT_PULLUP);
-  pinMode(15, INPUT_PULLUP);
+
+  pinMode(toggle_channel_pin , INPUT_PULLUP);
+  for (int i = 0; i < ARRAYSIZE(button_pins); i++) {
+//    buttons[i] = Bounce(button_pins[i], 5);
+    pinMode(button_pins[i] , INPUT_PULLUP);
+  }
+
+  //  pinMode(14, INPUT_PULLUP);
+  //  pinMode(15, INPUT_PULLUP);
+
+  //Read init state for pots and store as previous read
+  for (int i = 0; i < ARRAYSIZE(pot_pins); i++) {
+    pots[i] = pot_bounce(analogRead(pot_pins[i]));
+    pot_previous_read[i] = pots[i];
+  }
+
+  Serial.begin(9600);
+  //
+  //  pot1 = pot_bounce(analogRead(pot_pin1));
+  //  previous_read =  pot1;
 
 }
-
+int pot_bounce(int value) {
+  return value / 8;
+}
 void loop() {
   // Update all the buttons.  There should not be any long
   // delays in loop(), so this runs repetitively at a rate
   // faster than the buttons could be pressed and released.
-  button0.update();
-  button1.update();
-  if (button0.fallingEdge()) {
-    //    usbMIDI.sendNoteOn(60, 99, channel);  // 60 = C4
-  }
-  if (button1.fallingEdge()) {
-    //    usbMIDI.sendNoteOn(62, 99, channel);  // 60 = C4
-  }
-  if (button0.risingEdge()) {
-    //    usbMIDI.sendNoteOff(60, 0, channel);  // 60 = C4
-    if (button_0_state) {
-      usbMIDI.sendControlChange(80, ON_CC, channel);
+//  for (int i = 0; i < ARRAYSIZE(pot_pins); i++) {
+//    pots[i] = pot_bounce(analogRead(pot_pins[i]));
+//    if (pot_previous_read[i] != pots[i]) {
+//      pot_previous_read[i] = pots[i];
+//      usbMIDI.sendControlChange(pots_cc_number[i] , pots[i] , channel);
+//      Serial.println("sending pot message :");
+//      Serial.println(pots_cc_number[i]);
+//      Serial.println("sending pot value :");
+//      Serial.println(pots[i]);
+//    }
+//  }
+  for(int i = 0; i< ARRAYSIZE(button_pins);i++){
+    buttons[i].update();
     }
-    else {
-      usbMIDI.sendControlChange(80, OFF_CC, channel);
-    }
-    button_0_state = !button_0_state;
+  toggle_channel_button.update();
+  if (first_run){
+    
+    first_run = false;
+    return;
+    } 
+  for (int i = 0; i < ARRAYSIZE(button_pins); i++) {
+    if (buttons[i].risingEdge()) {
+        usbMIDI.sendControlChange(button_cc_number[i], 0, channel);
+        Serial.println("Button pressed :");
+        Serial.println(i);
+        Serial.println("cc sent");
+        Serial.println(toggle_channel_cc);
+      }
   }
-  if (button1.risingEdge()) {
-    if (button_1_state) {
-      usbMIDI.sendControlChange(81, ON_CC - 20, channel);
+
+  if (toggle_channel_button.risingEdge()) {
+        channel = (channel % 16) + 1;
+      Serial.println("new channel: ");
+      Serial.println(channel);
     }
-    else {
-      usbMIDI.sendControlChange(81, OFF_CC + 20, channel);
-    }
-    button_1_state = !button_1_state;
-  }
+  
+
   // MIDI Controllers should discard incoming MIDI messages.
   // http://forum.pjrc.com/threads/24179-Teensy-3-Ableton-Analog-CC-causes-midi-crash
   while (usbMIDI.read()) {
